@@ -1,12 +1,14 @@
 import { Injectable, EventEmitter, NgZone } from "@angular/core";
 import {
-    BackgroundGeolocation,
+    BackgroundGeolocation as BGPlugin,
     BackgroundGeolocationEvents,
     BackgroundGeolocationResponse,
     BackgroundGeolocationLocationProvider,
     // BackgroundGeolocationAccuracy,
     BackgroundGeolocationLogLevel
 } from "@ionic-native/background-geolocation/ngx";
+import { BackgroundGeolocationPlugin } from "cordova-background-geolocation-plugin";
+
 
 import { ResourcesService } from "./resources.service";
 import { RunningContextService } from "./running-context.service";
@@ -15,6 +17,8 @@ import { ToastService } from "./toast.service";
 import { NgRedux } from "../reducers/infra/ng-redux.module";
 import { SetGeoLocationStateAction } from "../reducers/in-memory.reducer";
 import { ApplicationState, ILatLngTime } from "../models/models";
+
+declare var BackgroundGeolocation: BackgroundGeolocationPlugin;
 
 @Injectable()
 export class GeoLocationService {
@@ -30,7 +34,7 @@ export class GeoLocationService {
     public currentLocation: ILatLngTime;
 
     constructor(private readonly resources: ResourcesService,
-                private readonly backgroundGeolocation: BackgroundGeolocation,
+                private readonly backgroundGeolocation: BGPlugin,
                 private readonly runningContextService: RunningContextService,
                 private readonly loggingService: LoggingService,
                 private readonly toastService: ToastService,
@@ -134,8 +138,7 @@ export class GeoLocationService {
             if (this.isBackground) {
                 return;
             }
-            let locations = await this.backgroundGeolocation.getValidLocations() as BackgroundGeolocationResponse[];
-            this.backgroundGeolocation.deleteAllLocations();
+            let locations = await this.getLocations();
             let positions = locations.map(l => this.locationToPosition(l));
             if (positions.length === 0) {
                 this.loggingService.debug(`[GeoLocation] There's nothing to send - valid locations array is empty`);
@@ -162,15 +165,14 @@ export class GeoLocationService {
         this.backgroundGeolocation.on(BackgroundGeolocationEvents.background).subscribe(
             () => {
                 this.isBackground = true;
-                this.loggingService.debug("[GeoLocation] Now in background, deleting locations");
-                this.backgroundGeolocation.deleteAllLocations();
+                this.loggingService.debug("[GeoLocation] Now in background");
+                //this.backgroundGeolocation.deleteAllLocations();
             });
 
         this.backgroundGeolocation.on(BackgroundGeolocationEvents.foreground).subscribe(
             async () => {
                 this.loggingService.debug("[GeoLocation] Now in foreground");
-                let locations = await this.backgroundGeolocation.getValidLocations() as BackgroundGeolocationResponse[];
-                this.backgroundGeolocation.deleteAllLocations();
+                let locations = await this.getLocations();
                 this.isBackground = false;
                 let positions = locations.map(l => this.locationToPosition(l));
                 if (positions.length > 0) {
@@ -180,6 +182,16 @@ export class GeoLocationService {
                 }
             });
         this.backgroundGeolocation.start();
+    }
+
+    private getLocations(): Promise<BackgroundGeolocationResponse[]> {
+        //let locations = await this.backgroundGeolocation.getValidLocations() as BackgroundGeolocationResponse[];
+        //this.backgroundGeolocation.deleteAllLocations();
+        return new Promise((resolve, reject) => {
+            BackgroundGeolocation.getValidLocationsAndDelete((locations) => resolve(locations as BackgroundGeolocationResponse[]), reject);
+        });
+        
+        
     }
 
     private async stopWatching() {
